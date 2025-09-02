@@ -1,0 +1,73 @@
+title: Plastic Usage Control System with QR Generation Flow
+
+// User Types
+Consumer [icon: user, color: blue]
+Business [icon: store, color: green] 
+Retailer [icon: warehouse, color: orange]
+Company [icon: factory, color: red]
+
+// Mobile Apps
+ConsumerApp [icon: phone, color: blue, label: "Consumer App\n(Scan & Pay)"]
+BusinessApp [icon: phone, color: green, label: "Business App\n(Verify Sales)"]
+RetailerApp [icon: phone, color: orange, label: "Retailer App\n(Inventory)"]
+CompanyApp [icon: phone, color: red, label: "Company App\n(Generate QR)"]
+
+// Backend
+Firebase [icon: cloud, color: gray, label: "Firebase\n(Firestore + Storage)"]
+
+// Physical Products
+QRProduct [icon: package, color: purple, label: "Physical Product\nwith QR Code"]
+
+// QR Generation Flow
+Company --> CompanyApp: "Create Product"
+CompanyApp --> Firebase: "Store Product Data"
+CompanyApp --> QRProduct: "Generate QR & Print"
+
+// Distribution Flow
+QRProduct --> Retailer: "Supply Chain"
+Retailer --> RetailerApp: "Update Inventory"
+QRProduct --> Business: "Retail Distribution"
+
+// Usage Flow
+Consumer --> ConsumerApp: "Scan QR Code"
+ConsumerApp --> Firebase: "Fetch Product Data"
+ConsumerApp --> BusinessApp: "Verify Purchase"
+Business --> BusinessApp: "Confirm Sale"
+
+// Payment Chain
+Consumer -[payment]-> Business: "Product + Disposal"
+Business -[payment]-> Retailer: "Disposal Cost"
+Retailer -[payment]-> Company: "Disposal Cost"
+
+// Data Flow
+ConsumerApp <--> Firebase: "Usage Tracking"
+BusinessApp <--> Firebase: "Sales Data"
+RetailerApp <--> Firebase: "Inventory Updates"
+CompanyApp <--> Firebase: "Product Management"
+
+// Groups
+group "Manufacturing" {
+  Company
+  CompanyApp
+  QRProduct
+}
+
+group "Distribution" {
+  Retailer
+  RetailerApp
+}
+
+group "Point of Sale" {
+  Business
+  BusinessApp
+  Consumer
+  ConsumerApp
+}
+
+group "Backend" {
+  Firebase
+}
+
+// QR Code Content
+note "QR Contains:\n- productId\n- disposalCost\n- category\n- companyId" as QRContent
+QRProduct --> QRContent

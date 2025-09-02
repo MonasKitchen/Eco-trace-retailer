@@ -1,0 +1,776 @@
+import { Ionicons } from '@expo/vector-icons';
+import React, { useEffect, useState } from 'react';
+import { Alert, FlatList, Modal, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { supabase } from '../../lib/supabase';
+
+interface DisposalDue {
+  id: string;
+  business_id: string;
+  amount: number;
+  due_date: string;
+  status: string;
+  business: {
+    name: string;
+    type: string;
+  };
+  created_at: string;
+  collected_at?: string;
+}
+
+interface CompanyPayment {
+  id: string;
+  company_id: string;
+  amount: number;
+  timestamp: string;
+  status: string;
+  company?: {
+    name: string;
+  };
+}
+
+interface CompanySummary {
+  company_id: string;
+  company_name: string;
+  total_owed: number;
+  last_payment: string | null;
+}
+
+export default function DisposalCollectionScreen() {
+  const [disposalDues, setDisposalDues] = useState<DisposalDue[]>([]);
+  const [companyPayments, setCompanyPayments] = useState<CompanyPayment[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [paymentModalVisible, setPaymentModalVisible] = useState(false);
+  const [selectedDue, setSelectedDue] = useState<DisposalDue | null>(null);
+  const [paymentAmount, setPaymentAmount] = useState('');
+  const [collectionHistory, setCollectionHistory] = useState<DisposalDue[]>([]);
+  const [activeTab, setActiveTab] = useState<'pending' | 'collected' | 'payments' | 'companies'>('pending');
+  const [companySummaries, setCompanySummaries] = useState<CompanySummary[]>([]);
+  const [companyPaymentModalVisible, setCompanyPaymentModalVisible] = useState(false);
+  const [selectedCompany, setSelectedCompany] = useState<CompanySummary | null>(null);
+  const [companyPaymentAmount, setCompanyPaymentAmount] = useState('');
+
+  useEffect(() => {
+    fetchData();
+  }, []);
+
+  const fetchData = async () => {
+    try {
+      setLoading(true);
+      
+      // Get current retailer
+      const { data: { user }, error: userError } = await supabase.auth.getUser();
+      if (userError || !user) {
+        Alert.alert('Error', 'User not authenticated');
+        return;
+      }
+
+      const { data: retailerData, error: retailerError } = await supabase
+        .from('retailers')
+        .select('id, registered_businesses')
+        .eq('user_id', user.id)
+        .single();
+
+      if (retailerError) throw retailerError;
+
+      const retailer = retailerData as { id: string; registered_businesses: string[] } | null;
+
+      if (retailer) {
+        // Fetch disposal dues
+        if (retailer.registered_businesses?.length > 0) {
+          const businessIds = retailer.registered_businesses.map(id => id.toString());
+          
+          // Fetch pending dues
+          const { data: pendingDues } = await supabase
+            .from('disposal_dues')
+            .select(`
+              *,
+              business:businesses(name, type)
+            `)
+            .in('business_id', businessIds)
+            .eq('status', 'pending')
+            .order('due_date', { ascending: true });
+
+          setDisposalDues(pendingDues || []);
+
+          // Fetch collected dues
+          const { data: collectedDues } = await supabase
+            .from('disposal_dues')
+            .select(`
+              *,
+              business:businesses(name, type)
+            `)
+            .in('business_id', businessIds)
+            .eq('status', 'collected')
+            .order('collected_at', { ascending: false })
+            .limit(20);
+
+          setCollectionHistory(collectedDues || []);
+        }
+
+        // Fetch company payments
+        const { data: paymentsData } = await supabase
+          .from('company_payments')
+          .select(`
+            *,
+            company:companies(name)
+          `)
+          .eq('retailer_id', retailer.id)
+          .order('timestamp', { ascending: false });
+
+        setCompanyPayments(paymentsData || []);
+
+        // Calculate company summaries (amount owed to each company)
+        const { data: inventoryData } = await supabase
+          .from('retailer_inventory')
+          .select(`
+            quantity,
+            company_product:company_products(
+              disposal_cost,
+              company:companies(id, name)
+            )
+          `)
+          .eq('retailer_id', retailer.id)
+          .gt('quantity', 0);
+
+        if (inventoryData) {
+          const companyOwed: { [key: string]: { name: string; total: number; lastPayment: string | null } } = {};
+          
+          inventoryData.forEach((item: any) => {
+            if (item.company_product?.company) {
+              const companyId = item.company_product.company.id;
+              const companyName = item.company_product.company.name;
+              const owedAmount = item.quantity * item.company_product.disposal_cost;
+              
+              if (!companyOwed[companyId]) {
+                companyOwed[companyId] = { name: companyName, total: 0, lastPayment: null };
+              }
+              companyOwed[companyId].total += owedAmount;
+            }
+          });
+
+          // Get last payment dates
+          for (const companyId of Object.keys(companyOwed)) {
+            const { data: lastPayment } = await supabase
+              .from('company_payments')
+              .select('timestamp')
+              .eq('retailer_id', retailer.id)
+              .eq('company_id', companyId)
+              .eq('status', 'completed')
+              .order('timestamp', { ascending: false })
+              .limit(1)
+              .single();
+
+            if (lastPayment) {
+              companyOwed[companyId].lastPayment = lastPayment.timestamp;
+            }
+          }
+
+          const summaries = Object.keys(companyOwed).map(companyId => ({
+            company_id: companyId,
+            company_name: companyOwed[companyId].name,
+            total_owed: companyOwed[companyId].total,
+            last_payment: companyOwed[companyId].lastPayment,
+          }));
+
+          setCompanySummaries(summaries);
+        }
+      }
+    } catch (error) {
+      console.error('Error fetching data:', error);
+      Alert.alert('Error', 'Failed to fetch data');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const collectPayment = async (due: DisposalDue) => {
+    setSelectedDue(due);
+    setPaymentAmount(due.amount.toString());
+    setPaymentModalVisible(true);
+  };
+
+  const processPayment = async () => {
+    if (!selectedDue || !paymentAmount) return;
+
+    try {
+      const amount = parseFloat(paymentAmount);
+      if (isNaN(amount) || amount <= 0) {
+        Alert.alert('Error', 'Please enter a valid amount');
+        return;
+      }
+
+      // Update disposal due status
+      const { error: updateError } = await supabase
+        .from('disposal_dues')
+        .update({ 
+          status: 'collected',
+          collected_at: new Date().toISOString()
+        })
+        .eq('id', selectedDue.id);
+
+      if (updateError) throw updateError;
+
+      // Create retailer transaction record
+      const { data: { user } } = await supabase.auth.getUser();
+      const { data: retailerData } = await supabase
+        .from('retailers')
+        .select('id')
+        .eq('user_id', user?.id)
+        .single();
+
+      if (retailerData) {
+        const { error: transactionError } = await supabase
+          .from('retailer_transactions')
+          .insert({
+            retailer_id: retailerData.id,
+            business_id: selectedDue.business_id,
+            amount: amount,
+            timestamp: new Date().toISOString(),
+            type: 'disposal_collection'
+          });
+
+        if (transactionError) throw transactionError;
+      }
+
+      Alert.alert('Success', 'Payment collected successfully');
+      setPaymentModalVisible(false);
+      setSelectedDue(null);
+      setPaymentAmount('');
+      fetchData();
+    } catch (error) {
+      console.error('Error processing payment:', error);
+      Alert.alert('Error', 'Failed to process payment');
+    }
+  };
+
+  const payToCompany = async (companyId: string, amount: number) => {
+    try {
+      const { data: { user }, error: userError } = await supabase.auth.getUser();
+      if (userError || !user) {
+        Alert.alert('Error', 'User not authenticated');
+        return;
+      }
+
+      const { data: retailerData, error: retailerError } = await supabase
+        .from('retailers')
+        .select('id')
+        .eq('user_id', user.id)
+        .single();
+
+      if (retailerError) throw retailerError;
+      if (!retailerData) return;
+
+      const retailer = retailerData as { id: string } | null;
+      if (!retailer) return;
+
+      const { error } = await supabase
+        .from('company_payments')
+        .insert({
+          company_id: companyId,
+          retailer_id: retailer.id,
+          amount: amount,
+          status: 'completed',
+        });
+
+      if (error) throw error;
+
+      Alert.alert('Success', 'Payment sent to company');
+      fetchData();
+    } catch (error) {
+      console.error('Error paying company:', error);
+      Alert.alert('Error', 'Failed to send payment');
+    }
+  };
+
+  const initiateCompanyPayment = (company: CompanySummary) => {
+    setSelectedCompany(company);
+    setCompanyPaymentAmount(company.total_owed.toString());
+    setCompanyPaymentModalVisible(true);
+  };
+
+  const processCompanyPayment = async () => {
+    if (!selectedCompany || !companyPaymentAmount) {
+      Alert.alert('Error', 'Please enter a valid amount');
+      return;
+    }
+
+    try {
+      const amount = parseFloat(companyPaymentAmount);
+      if (isNaN(amount) || amount <= 0) {
+        Alert.alert('Error', 'Please enter a valid amount');
+        return;
+      }
+
+      const { data: { user }, error: userError } = await supabase.auth.getUser();
+      if (userError || !user) {
+        Alert.alert('Error', 'User not authenticated');
+        return;
+      }
+
+      const { data: retailerData, error: retailerError } = await supabase
+        .from('retailers')
+        .select('id')
+        .eq('user_id', user.id)
+        .single();
+
+      if (retailerError) throw retailerError;
+
+      // Create company payment record
+      const { error: paymentError } = await supabase
+        .from('company_payments')
+        .insert({
+          company_id: selectedCompany.company_id,
+          retailer_id: retailerData.id,
+          amount: amount,
+          status: 'completed',
+          timestamp: new Date().toISOString(),
+        });
+
+      if (paymentError) throw paymentError;
+
+      Alert.alert('Success', `Payment of ₹${amount.toFixed(2)} to ${selectedCompany.company_name} processed successfully`);
+      setCompanyPaymentModalVisible(false);
+      setSelectedCompany(null);
+      setCompanyPaymentAmount('');
+      fetchData();
+    } catch (error) {
+      console.error('Error paying to company:', error);
+      Alert.alert('Error', 'Failed to process payment to company');
+    }
+  };
+
+  const createDisposalDue = async (businessId: string, amount: number, dueDate: string) => {
+    try {
+      const { error } = await supabase
+        .from('disposal_dues')
+        .insert({
+          business_id: businessId,
+          amount: amount,
+          due_date: dueDate,
+          status: 'pending',
+        });
+
+      if (error) throw error;
+      Alert.alert('Success', 'Disposal due created successfully');
+      fetchData();
+    } catch (error) {
+      console.error('Error creating disposal due:', error);
+      Alert.alert('Error', 'Failed to create disposal due');
+    }
+  };
+
+  const getStatusColor = (status: string) => {
+    switch (status) {
+      case 'pending': return 'text-yellow-600';
+      case 'collected': return 'text-green-600';
+      case 'overdue': return 'text-red-600';
+      default: return 'text-gray-600';
+    }
+  };
+
+  const getStatusIcon = (status: string) => {
+    switch (status) {
+      case 'pending': return 'time';
+      case 'collected': return 'checkmark-circle';
+      case 'overdue': return 'warning';
+      default: return 'help-circle';
+    }
+  };
+
+  const isOverdue = (dueDate: string) => {
+    return new Date(dueDate) < new Date();
+  };
+
+  // ---- UI renderers stay unchanged ----
+  const renderDisposalDue = ({ item }: { item: DisposalDue }) => (
+    <View className="bg-white rounded-lg p-4 mb-3 shadow-sm">
+      <View className="flex-row justify-between items-start">
+        <View className="flex-1">
+          <Text className="text-lg font-semibold text-gray-800">{item.business.name}</Text>
+          <Text className="text-gray-600 mt-1">{item.business.type}</Text>
+          <Text className="text-red-600 font-semibold mt-2">
+            Amount Due: ₹{item.amount}
+          </Text>
+          <Text className="text-sm text-gray-500 mt-1">
+            Due Date: {new Date(item.due_date).toLocaleDateString()}
+          </Text>
+        </View>
+        
+        <View className={`px-3 py-1 rounded-full ${
+          new Date(item.due_date) < new Date() ? 'bg-red-100' : 'bg-yellow-100'
+        }`}>
+          <Text className={`text-xs font-medium ${
+            new Date(item.due_date) < new Date() ? 'text-red-600' : 'text-yellow-600'
+          }`}>
+            {new Date(item.due_date) < new Date() ? 'Overdue' : 'Pending'}
+          </Text>
+        </View>
+      </View>
+      
+      <TouchableOpacity 
+        onPress={() => collectPayment(item)}
+        className="bg-green-600 rounded-lg py-3 mt-3"
+      >
+        <Text className="text-white text-center font-medium">Collect Payment</Text>
+      </TouchableOpacity>
+    </View>
+  );
+
+  const renderCompanyPayment = ({ item }: { item: CompanyPayment }) => (
+    <View className="bg-white rounded-lg p-4 mb-3 shadow-sm">
+      <View className="flex-row justify-between items-start">
+        <View className="flex-1">
+          <Text className="text-lg font-semibold text-gray-800">
+            {item.company?.name || 'Company Payment'}
+          </Text>
+          <Text className="text-green-600 font-semibold mt-2">
+            Amount: ₹{item.amount}
+          </Text>
+          <Text className="text-sm text-gray-500 mt-1">
+            Date: {new Date(item.timestamp).toLocaleDateString()}
+          </Text>
+        </View>
+        
+        <View className={`px-3 py-1 rounded-full ${
+          item.status === 'completed' ? 'bg-green-100' : 
+          item.status === 'pending' ? 'bg-yellow-100' : 'bg-red-100'
+        }`}>
+          <Text className={`text-xs font-medium ${
+            item.status === 'completed' ? 'text-green-600' : 
+            item.status === 'pending' ? 'text-yellow-600' : 'text-red-600'
+          }`}>
+            {item.status.charAt(0).toUpperCase() + item.status.slice(1)}
+          </Text>
+        </View>
+      </View>
+    </View>
+  );
+
+  const renderCompanySummary = ({ item }: { item: CompanySummary }) => (
+    <View className="bg-white rounded-lg p-4 mb-3 shadow-sm">
+      <View className="flex-row justify-between items-start">
+        <View className="flex-1">
+          <Text className="text-lg font-semibold text-gray-800 mb-1">
+            {item.company_name}
+          </Text>
+          <Text className="text-xl font-bold text-red-600 mb-2">
+            Owed: ₹{item.total_owed.toFixed(2)}
+          </Text>
+          {item.last_payment && (
+            <Text className="text-sm text-gray-500">
+              Last payment: {new Date(item.last_payment).toLocaleDateString()}
+            </Text>
+          )}
+          {!item.last_payment && (
+            <Text className="text-sm text-gray-500">
+              No previous payments
+            </Text>
+          )}
+        </View>
+      </View>
+      
+      <TouchableOpacity 
+        onPress={() => initiateCompanyPayment(item)}
+        className="bg-blue-600 rounded-lg py-3 mt-3"
+        disabled={item.total_owed <= 0}
+      >
+        <Text className="text-white text-center font-medium">
+          {item.total_owed > 0 ? 'Pay Company' : 'No Amount Due'}
+        </Text>
+      </TouchableOpacity>
+    </View>
+  );
+
+  if (loading) {
+    return (
+      <View className="flex-1 justify-center items-center bg-gray-50">
+        <Text className="text-gray-600">Loading collection data...</Text>
+      </View>
+    );
+  }
+
+  return (
+    <View className="flex-1 bg-gray-50">
+      <View className="p-4 bg-white border-b border-gray-200">
+        <Text className="text-2xl font-bold text-gray-800 mb-2">Collection Management</Text>
+        <Text className="text-gray-600">Manage disposal cost collection and payments</Text>
+      </View>
+
+      {/* Tab Navigation */}
+      <View className="flex-row bg-white border-b border-gray-200">
+        <TouchableOpacity
+          className={`flex-1 py-3 px-4 ${activeTab === 'pending' ? 'border-b-2 border-green-600' : ''}`}
+          onPress={() => setActiveTab('pending')}
+        >
+          <Text className={`text-center font-semibold ${activeTab === 'pending' ? 'text-green-600' : 'text-gray-600'}`}>
+            Pending ({disposalDues.length})
+          </Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          className={`flex-1 py-3 px-4 ${activeTab === 'collected' ? 'border-b-2 border-green-600' : ''}`}
+          onPress={() => setActiveTab('collected')}
+        >
+          <Text className={`text-center font-semibold ${activeTab === 'collected' ? 'text-green-600' : 'text-gray-600'}`}>
+            Collected ({collectionHistory.length})
+          </Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          className={`flex-1 py-3 px-4 ${activeTab === 'payments' ? 'border-b-2 border-green-600' : ''}`}
+          onPress={() => setActiveTab('payments')}
+        >
+          <Text className={`text-center font-semibold ${activeTab === 'payments' ? 'text-green-600' : 'text-gray-600'}`}>
+            Payments ({companyPayments.length})
+          </Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          className={`flex-1 py-3 px-4 ${activeTab === 'companies' ? 'border-b-2 border-green-600' : ''}`}
+          onPress={() => setActiveTab('companies')}
+        >
+          <Text className={`text-center font-semibold ${activeTab === 'companies' ? 'text-green-600' : 'text-gray-600'}`}>
+            Pay Companies ({companySummaries.length})
+          </Text>
+        </TouchableOpacity>
+      </View>
+
+      {activeTab === 'pending' && (
+        <View className="flex-1 p-4">
+          {loading ? (
+            <View className="flex-1 justify-center items-center">
+              <Text className="text-gray-600">Loading...</Text>
+            </View>
+          ) : disposalDues.length === 0 ? (
+            <View className="flex-1 justify-center items-center">
+              <Ionicons name="checkmark-circle" size={64} color="#16a34a" />
+              <Text className="text-xl font-semibold text-gray-800 mt-4">No Pending Collections</Text>
+              <Text className="text-gray-600 text-center mt-2">All disposal costs have been collected</Text>
+            </View>
+          ) : (
+            <FlatList
+              data={disposalDues}
+              keyExtractor={(item) => item.id}
+              renderItem={({ item }) => (
+                <View className={`bg-white rounded-lg p-4 mb-3 border-l-4 ${isOverdue(item.due_date) ? 'border-red-500' : 'border-yellow-500'}`}>
+                  <View className="flex-row justify-between items-start mb-2">
+                    <View className="flex-1">
+                      <Text className="text-lg font-semibold text-gray-800">{item.business.name}</Text>
+                      <Text className="text-gray-600">{item.business.type}</Text>
+                    </View>
+                    <View className="items-end">
+                      <Text className="text-xl font-bold text-green-600">₹{item.amount}</Text>
+                      <Text className={`text-sm ${isOverdue(item.due_date) ? 'text-red-600' : 'text-yellow-600'}`}>
+                        {isOverdue(item.due_date) ? 'Overdue' : 'Due: ' + new Date(item.due_date).toLocaleDateString()}
+                      </Text>
+                    </View>
+                  </View>
+                  
+                  <View className="flex-row justify-between items-center mt-3">
+                    <View className="flex-row items-center">
+                      <Ionicons 
+                        name={getStatusIcon(item.status)} 
+                        size={16} 
+                        color={isOverdue(item.due_date) ? '#dc2626' : '#ca8a04'} 
+                      />
+                      <Text className={`ml-1 text-sm ${getStatusColor(item.status)}`}>
+                        {isOverdue(item.due_date) ? 'Overdue' : 'Pending Collection'}
+                      </Text>
+                    </View>
+                    
+                    <TouchableOpacity
+                      className="bg-green-600 py-2 px-4 rounded-lg"
+                      onPress={() => collectPayment(item)}
+                    >
+                      <Text className="text-white font-semibold">Collect</Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              )}
+            />
+          )}
+        </View>
+      )}
+
+      {activeTab === 'collected' && (
+        <View className="flex-1 p-4">
+          {collectionHistory.length === 0 ? (
+            <View className="flex-1 justify-center items-center">
+              <Ionicons name="receipt" size={64} color="#6b7280" />
+              <Text className="text-xl font-semibold text-gray-800 mt-4">No Collection History</Text>
+              <Text className="text-gray-600 text-center mt-2">Collections will appear here once processed</Text>
+            </View>
+          ) : (
+            <FlatList
+              data={collectionHistory}
+              keyExtractor={(item) => item.id}
+              renderItem={({ item }) => (
+                <View className="bg-white rounded-lg p-4 mb-3 border-l-4 border-green-500">
+                  <View className="flex-row justify-between items-start mb-2">
+                    <View className="flex-1">
+                      <Text className="text-lg font-semibold text-gray-800">{item.business.name}</Text>
+                      <Text className="text-gray-600">{item.business.type}</Text>
+                    </View>
+                    <View className="items-end">
+                      <Text className="text-xl font-bold text-green-600">₹{item.amount}</Text>
+                      <Text className="text-sm text-gray-600">
+                        Collected: {new Date(item.collected_at || '').toLocaleDateString()}
+                      </Text>
+                    </View>
+                  </View>
+                  
+                  <View className="flex-row items-center mt-2">
+                    <Ionicons name="checkmark-circle" size={16} color="#16a34a" />
+                    <Text className="ml-1 text-sm text-green-600">Payment Collected</Text>
+                  </View>
+                </View>
+              )}
+            />
+          )}
+        </View>
+      )}
+
+      {activeTab === 'payments' && (
+        <View className="flex-1 p-4">
+          {companyPayments.length === 0 ? (
+            <View className="flex-1 justify-center items-center">
+              <Ionicons name="card" size={64} color="#6b7280" />
+              <Text className="text-xl font-semibold text-gray-800 mt-4">No Payment History</Text>
+              <Text className="text-gray-600 text-center mt-2">Company payments will appear here</Text>
+            </View>
+          ) : (
+            <FlatList
+              data={companyPayments}
+              keyExtractor={(item) => item.id}
+              renderItem={({ item }) => (
+                <View className="bg-white rounded-lg p-4 mb-3">
+                  <View className="flex-row justify-between items-center mb-2">
+                    <Text className="text-lg font-semibold text-gray-800">Company Payment</Text>
+                    <Text className="text-xl font-bold text-blue-600">₹{item.amount}</Text>
+                  </View>
+                  
+                  <View className="flex-row justify-between items-center">
+                    <Text className="text-gray-600">
+                      {new Date(item.timestamp).toLocaleDateString()}
+                    </Text>
+                    <View className={`px-2 py-1 rounded ${item.status === 'completed' ? 'bg-green-100' : 'bg-yellow-100'}`}>
+                      <Text className={`text-sm ${item.status === 'completed' ? 'text-green-800' : 'text-yellow-800'}`}>
+                        {item.status}
+                      </Text>
+                    </View>
+                  </View>
+                </View>
+              )}
+            />
+          )}
+        </View>
+      )}
+
+      {activeTab === 'companies' && (
+        <View className="flex-1 p-4">
+          {companySummaries.length === 0 ? (
+            <View className="flex-1 justify-center items-center">
+              <Ionicons name="business" size={64} color="#6b7280" />
+              <Text className="text-xl font-semibold text-gray-800 mt-4">No Company Payments Due</Text>
+              <Text className="text-gray-600 text-center mt-2">Purchase products from companies to see payment obligations</Text>
+            </View>
+          ) : (
+            <FlatList
+              data={companySummaries}
+              keyExtractor={(item) => item.company_id}
+              renderItem={renderCompanySummary}
+              showsVerticalScrollIndicator={false}
+            />
+          )}
+        </View>
+      )}
+
+      {/* Payment Modal */}
+      <Modal
+        animationType="slide"
+        transparent={true}
+        visible={paymentModalVisible}
+        onRequestClose={() => setPaymentModalVisible(false)}
+      >
+        <View className="flex-1 justify-center items-center bg-black/50">
+          <View className="bg-white rounded-lg p-6 m-4 w-full max-w-sm">
+            <Text className="text-xl font-bold text-gray-800 mb-4">Collect Payment</Text>
+            
+            {selectedDue && (
+              <>
+                <Text className="text-gray-600 mb-2">Business: {selectedDue.business.name}</Text>
+                <Text className="text-gray-600 mb-4">Due Amount: ₹{selectedDue.amount}</Text>
+              </>
+            )}
+            
+            <TextInput
+              className="border border-gray-300 rounded-lg px-3 py-2 mb-4"
+              placeholder="Payment Amount (₹)"
+              value={paymentAmount}
+              onChangeText={setPaymentAmount}
+              keyboardType="numeric"
+            />
+            
+            <View className="flex-row space-x-3">
+              <TouchableOpacity 
+                onPress={() => setPaymentModalVisible(false)}
+                className="flex-1 bg-gray-200 rounded-lg py-3"
+              >
+                <Text className="text-gray-700 text-center font-medium">Cancel</Text>
+              </TouchableOpacity>
+              
+              <TouchableOpacity 
+                onPress={processPayment}
+                className="flex-1 bg-green-600 rounded-lg py-3"
+              >
+                <Text className="text-white text-center font-medium">Collect</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Company Payment Modal */}
+      <Modal
+        animationType="slide"
+        transparent={true}
+        visible={companyPaymentModalVisible}
+        onRequestClose={() => setCompanyPaymentModalVisible(false)}
+      >
+        <View className="flex-1 justify-center items-center bg-black/50">
+          <View className="bg-white rounded-lg p-6 m-4 w-full max-w-sm">
+            <Text className="text-xl font-bold text-gray-800 mb-4">Pay Company</Text>
+            
+            {selectedCompany && (
+              <>
+                <Text className="text-gray-600 mb-2">Company: {selectedCompany.company_name}</Text>
+                <Text className="text-gray-600 mb-4">Total Owed: ₹{selectedCompany.total_owed.toFixed(2)}</Text>
+              </>
+            )}
+            
+            <TextInput
+              className="border border-gray-300 rounded-lg px-3 py-2 mb-4"
+              placeholder="Payment Amount (₹)"
+              value={companyPaymentAmount}
+              onChangeText={setCompanyPaymentAmount}
+              keyboardType="numeric"
+            />
+            
+            <View className="flex-row space-x-3">
+              <TouchableOpacity 
+                onPress={() => setCompanyPaymentModalVisible(false)}
+                className="flex-1 bg-gray-200 rounded-lg py-3"
+              >
+                <Text className="text-gray-700 text-center font-medium">Cancel</Text>
+              </TouchableOpacity>
+              
+              <TouchableOpacity 
+                onPress={processCompanyPayment}
+                className="flex-1 bg-blue-600 rounded-lg py-3"
+              >
+                <Text className="text-white text-center font-medium">Pay</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+    </View>
+  );
+}

@@ -1,29 +1,47 @@
-import { DarkTheme, DefaultTheme, ThemeProvider } from '@react-navigation/native';
-import { useFonts } from 'expo-font';
-import { Stack } from 'expo-router';
-import { StatusBar } from 'expo-status-bar';
-import 'react-native-reanimated';
-
-import { useColorScheme } from '@/hooks/useColorScheme';
+import { Session } from "@supabase/supabase-js";
+import { Stack, useRouter, useSegments } from "expo-router";
+import { useEffect, useState } from "react";
+import { supabase } from "../lib/supabase";
+import "./global.css";
 
 export default function RootLayout() {
-  const colorScheme = useColorScheme();
-  const [loaded] = useFonts({
-    SpaceMono: require('../assets/fonts/SpaceMono-Regular.ttf'),
-  });
+  const [session, setSession] = useState<Session | null>(null);
+  const [loading, setLoading] = useState(true);
+  const segments = useSegments();
+  const router = useRouter();
 
-  if (!loaded) {
-    // Async font loading only occurs in development.
-    return null;
+  useEffect(() => {
+    // Get initial session
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setSession(session);
+      setLoading(false);
+    });
+
+    // Listen for auth changes
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setSession(session);
+    });
+
+    return () => subscription.unsubscribe();
+  }, []);
+
+  useEffect(() => {
+    if (loading) return;
+
+    const inAuthGroup = segments[0] === '(tabs)';
+
+    if (session && !inAuthGroup) {
+      // User is logged in but not in tabs, redirect to tabs
+      router.replace("/(tabs)");
+    } else if (!session && inAuthGroup) {
+      // User is not logged in but in tabs, redirect to auth
+      router.replace("/");
+    }
+  }, [session, segments, loading, router]);
+
+  if (loading) {
+    return null; // Show nothing while loading
   }
 
-  return (
-    <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
-      <Stack>
-        <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-        <Stack.Screen name="+not-found" />
-      </Stack>
-      <StatusBar style="auto" />
-    </ThemeProvider>
-  );
+  return <Stack screenOptions={{ headerShown: false }} />;
 }
