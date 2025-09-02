@@ -1,50 +1,105 @@
-# Welcome to your Expo app 👋
+Supabase Auth Handles user, business, retailer, and company accounts
 
-This is an [Expo](https://expo.dev) project created with [`create-expo-app`](https://www.npmjs.com/package/create-expo-app).
+Supports email/password, OAuth, OTP, etc.
 
-## Get started
+Supabase Database (Postgres Tables) users: { id, name, income,
+plastic_limit, current_usage } businesses: { id, owner_id (FK users),
+type, verification_status } retailers: { id, name, registered_businesses
+int\[\] } companies: { id, name, disposal_rates jsonb } products: { id,
+name, category, disposal_cost, retailer_id (FK retailers) }
+transactions: { id, user_id, product_id, timestamp, cost_paid }
+business_transactions: { id, business_id, product_id, timestamp, status
+} retailer_transactions: { id, retailer_id, business_id, amount,
+timestamp } company_payments: { id, company_id, retailer_id, amount,
+timestamp } disposal_dues: { id, business_id, amount, due_date }
+environmental_reports: { id, company_id, report_data jsonb, generated_at
+}
 
-1. Install dependencies
+Supabase Storage For document uploads (income certificate, business
+verification docs)
 
-   ```bash
-   npm install
-   ```
+Organized buckets:
 
-2. Start the app
+/user_docs/
 
-   ```bash
-   npx expo start
-   ```
+/business_docs/
 
-In the output, you'll find options to open the app in a
+Supabase Functions (Edge Functions) calculateDisposalCost -- Compute
+disposal cost based on product type
 
-- [development build](https://docs.expo.dev/develop/development-builds/introduction/)
-- [Android emulator](https://docs.expo.dev/workflow/android-studio-emulator/)
-- [iOS simulator](https://docs.expo.dev/workflow/ios-simulator/)
-- [Expo Go](https://expo.dev/go), a limited sandbox for trying out app development with Expo
+checkUsageLimit -- Block user purchase if over plastic limit
 
-You can start developing by editing the files inside the **app** directory. This project uses [file-based routing](https://docs.expo.dev/router/introduction).
+processPaymentChain -- Business → Retailer → Company settlement
 
-## Get a fresh project
+generateReports -- Monthly usage/environmental reports
 
-When you're ready, run:
+sendNotifications -- Email/Push notifications via Supabase + Expo
 
-```bash
-npm run reset-project
-```
+Supabase Policies (RLS) Users: can only SELECT/UPDATE their own row
 
-This command will move the starter code to the **app-example** directory and create a blank **app** directory where you can start developing.
+Businesses: can update their own transactions only
 
-## Learn more
+Retailers: can SELECT businesses linked to them
 
-To learn more about developing your project with Expo, look at the following resources:
+Companies: can access aggregated reports only
 
-- [Expo documentation](https://docs.expo.dev/): Learn fundamentals, or go into advanced topics with our [guides](https://docs.expo.dev/guides).
-- [Learn Expo tutorial](https://docs.expo.dev/tutorial/introduction/): Follow a step-by-step tutorial where you'll create a project that runs on Android, iOS, and the web.
+📱 Unit 1: Consumer App (React Native + Supabase) Screens: AuthScreen --
+Supabase Auth sign-in/register
 
-## Join the community
+DocumentUploadScreen -- Upload docs → Supabase Storage
 
-Join our community of developers creating universal apps.
+HomeScreen -- Dashboard (plastic usage stats from transactions)
 
-- [Expo on GitHub](https://github.com/expo/expo): View our open source platform and contribute.
-- [Discord community](https://chat.expo.dev): Chat with Expo users and ask questions.
+QRScannerScreen -- Scan QR → fetch product details from products
+
+ProductDetailsScreen -- Show product info + disposal cost
+
+UsageLimitScreen -- Compare current_usage vs plastic_limit
+
+TransactionHistoryScreen -- Show past purchases (transactions)
+
+ProfileScreen -- Update profile settings
+
+📱 Unit 2: Business/Shopkeeper App Screens: AuthScreen
+
+BusinessVerificationScreen (upload docs → Supabase Storage)
+
+HomeScreen (pending payments summary)
+
+ProductScanScreen (scan product before selling)
+
+CustomerVerificationScreen (verify scanned QR vs user)
+
+DisposalCostScreen (view owed disposal costs from disposal_dues)
+
+PaymentScreen (pay dues → Razorpay/Stripe API)
+
+SalesHistoryScreen (business_transactions)
+
+📱 Unit 3: Retailer App Screens: AuthScreen
+
+HomeScreen (collection summary)
+
+BusinessListScreen (businesses linked to retailer)
+
+DisposalCollectionScreen (collect payments → retailer_transactions)
+
+ProductManagementScreen (manage products + disposal costs)
+
+PaymentToCompanyScreen (company_payments)
+
+ReportsScreen (reports from generateReports)
+
+📱 Unit 4: Plastic Company App Screens: AuthScreen
+
+HomeScreen (collection summary from retailers)
+
+RetailerListScreen (all registered retailers)
+
+PaymentCollectionScreen (collect from retailers)
+
+ProductCatalogScreen (manage disposal rates in companies)
+
+AnalyticsScreen (plastic usage trends from transactions)
+
+ComplianceScreen (environmental_reports)
