@@ -135,6 +135,8 @@ export default function CompanyProductsScreen() {
         throw checkError;
       }
 
+      let inventoryId: string;
+      
       if (existingInventory) {
         // Update existing inventory
         const { error: updateError } = await supabase
@@ -147,9 +149,10 @@ export default function CompanyProductsScreen() {
           .eq('id', existingInventory.id);
 
         if (updateError) throw updateError;
+        inventoryId = existingInventory.id;
       } else {
         // Create new inventory item
-        const { error: insertError } = await supabase
+        const { data: newInventory, error: insertError } = await supabase
           .from('retailer_inventory')
           .insert({
             company_product_id: selectedProduct.id,
@@ -157,13 +160,41 @@ export default function CompanyProductsScreen() {
             quantity: parseInt(purchaseDetails.quantity),
             unit_price: parseFloat(purchaseDetails.unitPrice),
             status: 'available',
-          });
+            plastic_quantity_grams: 0, // Will be set based on product specs
+            plastic_cost_per_gram: selectedProduct.disposal_cost,
+            total_plastic_cost: selectedProduct.disposal_cost * parseInt(purchaseDetails.quantity),
+          })
+          .select('id')
+          .single();
 
         if (insertError) throw insertError;
+        inventoryId = newInventory.id;
       }
 
-      // Create a dummy company payment record
+      // Calculate total amount for transactions
       const totalAmount = parseInt(purchaseDetails.quantity) * parseFloat(purchaseDetails.unitPrice);
+
+      // Create inventory transaction record for audit trail
+      const { error: transactionError } = await supabase
+        .from('inventory_transactions')
+        .insert({
+          inventory_id: inventoryId,
+          business_id: null, // This is a retailer purchase from company, not business purchase
+          quantity: parseInt(purchaseDetails.quantity),
+          transaction_type: 'purchase',
+          unit_price: parseFloat(purchaseDetails.unitPrice),
+          total_amount: totalAmount,
+          plastic_quantity_purchased: 0, // Set based on product specs if available
+          plastic_disposal_cost: selectedProduct.disposal_cost * parseInt(purchaseDetails.quantity),
+          timestamp: new Date().toISOString(),
+        });
+
+      if (transactionError) {
+        console.error('Transaction record creation failed:', transactionError);
+        // Don't fail the whole operation for this
+      }
+
+      // Create company payment record for audit trail
       const { error: paymentError } = await supabase
         .from('company_payments')
         .insert({
@@ -171,14 +202,20 @@ export default function CompanyProductsScreen() {
           retailer_id: retailerData.id,
           amount: totalAmount,
           status: 'completed',
+          timestamp: new Date().toISOString(),
         });
 
       if (paymentError) {
-        console.warn('Payment record creation failed:', paymentError);
-        // Don't fail the whole transaction for this
+        console.error('Payment record creation failed:', paymentError);
+        Alert.alert('Warning', 'Product purchased successfully but payment record failed to save. Please contact support.');
       }
 
-      Alert.alert('Success', `Successfully stocked ${purchaseDetails.quantity} units of ${selectedProduct.name} in your inventory. Plastic disposal costs are tracked.`);
+      Alert.alert('Purchase Complete', 
+        `Successfully purchased ${purchaseDetails.quantity} units of ${selectedProduct.name}\n\n` +
+        `Total Cost: ₹${totalAmount.toFixed(2)}\n` +
+        `Disposal Cost: ₹${(selectedProduct.disposal_cost * parseInt(purchaseDetails.quantity)).toFixed(2)}\n\n` +
+        `Payment recorded and inventory updated.`
+      );
       setBuyModalVisible(false);
       setSelectedProduct(null);
       setPurchaseDetails({ quantity: '', unitPrice: '' });

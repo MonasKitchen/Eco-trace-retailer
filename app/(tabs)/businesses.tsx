@@ -1,8 +1,8 @@
 import { Ionicons } from '@expo/vector-icons';
+import { router } from 'expo-router';
 import React, { useEffect, useState } from 'react';
 import { Alert, FlatList, Modal, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { supabase } from '../../lib/supabase';
-import { router } from 'expo-router';
 
 interface Business {
   id: string;
@@ -11,6 +11,10 @@ interface Business {
   verification_status: string;
   owner_id: string;
   created_at: string;
+  contact_person?: string;
+  email?: string;
+  phone_number?: string;
+  address?: string;
 }
 
 export default function BusinessListScreen() {
@@ -21,10 +25,15 @@ export default function BusinessListScreen() {
   const [newBusiness, setNewBusiness] = useState({
     name: '',
     type: '',
+    contact_person: '',
+    email: '',
+    phone_number: '',
   });
   const [searchQuery, setSearchQuery] = useState('');
   const [availableBusinesses, setAvailableBusinesses] = useState<Business[]>([]);
   const [addBusinessModalVisible, setAddBusinessModalVisible] = useState(false);
+  const [selectedBusiness, setSelectedBusiness] = useState<Business | null>(null);
+  const [businessDetailsModalVisible, setBusinessDetailsModalVisible] = useState(false);
 
   useEffect(() => {
     fetchBusinesses();
@@ -104,7 +113,7 @@ export default function BusinessListScreen() {
 
   const addBusiness = async () => {
     if (!newBusiness.name || !newBusiness.type) {
-      Alert.alert('Error', 'Please fill all fields');
+      Alert.alert('Error', 'Please fill business name and type');
       return;
     }
 
@@ -150,7 +159,7 @@ export default function BusinessListScreen() {
 
       Alert.alert('Success', 'Business registered successfully');
       setModalVisible(false);
-      setNewBusiness({ name: '', type: '' });
+      setNewBusiness({ name: '', type: '', contact_person: '', email: '', phone_number: '' });
       fetchBusinesses();
     } catch (error) {
       console.error('Error adding business:', error);
@@ -286,6 +295,9 @@ export default function BusinessListScreen() {
         <View className="flex-1">
           <Text className="text-lg font-semibold text-gray-800">{item.name}</Text>
           <Text className="text-gray-600 mt-1">{item.type}</Text>
+          {item.contact_person && (
+            <Text className="text-sm text-gray-500 mt-1">Contact: {item.contact_person}</Text>
+          )}
           <Text className="text-sm text-gray-500 mt-1">
             Registered: {new Date(item.created_at).toLocaleDateString()}
           </Text>
@@ -305,7 +317,13 @@ export default function BusinessListScreen() {
       </View>
       
       <View className="flex-row mt-3 space-x-2">
-        <TouchableOpacity className="bg-blue-100 rounded-lg px-3 py-2 flex-1">
+        <TouchableOpacity 
+          className="bg-blue-100 rounded-lg px-3 py-2 flex-1"
+          onPress={() => {
+            setSelectedBusiness(item);
+            setBusinessDetailsModalVisible(true);
+          }}
+        >
           <Text className="text-blue-600 text-center font-medium">View Details</Text>
         </TouchableOpacity>
         
@@ -430,10 +448,34 @@ export default function BusinessListScreen() {
             />
             
             <TextInput
-              className="border border-gray-300 rounded-lg px-3 py-2 mb-4"
+              className="border border-gray-300 rounded-lg px-3 py-2 mb-3"
               placeholder="Business Type"
               value={newBusiness.type}
               onChangeText={(text) => setNewBusiness({ ...newBusiness, type: text })}
+            />
+            
+            <TextInput
+              className="border border-gray-300 rounded-lg px-3 py-2 mb-3"
+              placeholder="Contact Person (Optional)"
+              value={newBusiness.contact_person}
+              onChangeText={(text) => setNewBusiness({ ...newBusiness, contact_person: text })}
+            />
+            
+            <TextInput
+              className="border border-gray-300 rounded-lg px-3 py-2 mb-3"
+              placeholder="Email (Optional)"
+              value={newBusiness.email}
+              onChangeText={(text) => setNewBusiness({ ...newBusiness, email: text })}
+              keyboardType="email-address"
+              autoCapitalize="none"
+            />
+            
+            <TextInput
+              className="border border-gray-300 rounded-lg px-3 py-2 mb-4"
+              placeholder="Phone Number (Optional)"
+              value={newBusiness.phone_number}
+              onChangeText={(text) => setNewBusiness({ ...newBusiness, phone_number: text })}
+              keyboardType="phone-pad"
             />
             
             <View className="flex-row space-x-3">
@@ -502,6 +544,109 @@ export default function BusinessListScreen() {
             >
               <Text className="text-white text-center font-semibold">Cancel</Text>
             </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Business Details Modal */}
+      <Modal
+        visible={businessDetailsModalVisible}
+        animationType="slide"
+        transparent={true}
+        onRequestClose={() => setBusinessDetailsModalVisible(false)}
+      >
+        <View className="flex-1 bg-black bg-opacity-50 justify-center items-center p-4">
+          <View className="bg-white rounded-lg p-6 w-full max-w-md">
+            <Text className="text-xl font-bold text-gray-800 mb-4">Business Details</Text>
+            
+            {selectedBusiness && (
+              <View className="space-y-3">
+                <View>
+                  <Text className="text-sm text-gray-500">Business Name</Text>
+                  <Text className="text-lg font-semibold text-gray-800">{selectedBusiness.name}</Text>
+                </View>
+                
+                <View>
+                  <Text className="text-sm text-gray-500">Type</Text>
+                  <Text className="text-gray-800">{selectedBusiness.type}</Text>
+                </View>
+                
+                <View>
+                  <Text className="text-sm text-gray-500">Status</Text>
+                  <View className="flex-row items-center mt-1">
+                    <Ionicons 
+                      name={getStatusIcon(selectedBusiness.verification_status)} 
+                      size={16} 
+                      color={selectedBusiness.verification_status === 'verified' ? '#16a34a' : 
+                             selectedBusiness.verification_status === 'pending' ? '#f59e0b' : '#ef4444'} 
+                    />
+                    <Text className={`ml-2 font-medium ${getStatusColor(selectedBusiness.verification_status)}`}>
+                      {selectedBusiness.verification_status.charAt(0).toUpperCase() + selectedBusiness.verification_status.slice(1)}
+                    </Text>
+                  </View>
+                </View>
+                
+                {selectedBusiness.contact_person && (
+                  <View>
+                    <Text className="text-sm text-gray-500">Contact Person</Text>
+                    <Text className="text-gray-800">{selectedBusiness.contact_person}</Text>
+                  </View>
+                )}
+                
+                {selectedBusiness.email && (
+                  <View>
+                    <Text className="text-sm text-gray-500">Email</Text>
+                    <Text className="text-gray-800">{selectedBusiness.email}</Text>
+                  </View>
+                )}
+                
+                {selectedBusiness.phone_number && (
+                  <View>
+                    <Text className="text-sm text-gray-500">Phone</Text>
+                    <Text className="text-gray-800">{selectedBusiness.phone_number}</Text>
+                  </View>
+                )}
+                
+                <View>
+                  <Text className="text-sm text-gray-500">Registered Date</Text>
+                  <Text className="text-gray-800">{new Date(selectedBusiness.created_at).toLocaleDateString()}</Text>
+                </View>
+              </View>
+            )}
+
+            <View className="flex-row space-x-3 mt-6">
+              <TouchableOpacity
+                className="flex-1 bg-gray-500 py-3 px-4 rounded-lg"
+                onPress={() => setBusinessDetailsModalVisible(false)}
+              >
+                <Text className="text-white text-center font-semibold">Close</Text>
+              </TouchableOpacity>
+              
+              <TouchableOpacity
+                className="flex-1 bg-red-500 py-3 px-4 rounded-lg"
+                onPress={() => {
+                  Alert.alert(
+                    'Remove Business',
+                    `Are you sure you want to remove ${selectedBusiness?.name} from your network?`,
+                    [
+                      { text: 'Cancel', style: 'cancel' },
+                      { 
+                        text: 'Remove', 
+                        style: 'destructive',
+                        onPress: () => {
+                          if (selectedBusiness) {
+                            removeBusinessFromRetailer(selectedBusiness.id);
+                            setBusinessDetailsModalVisible(false);
+                          }
+                        }
+                      }
+                    ]
+                  );
+                }}
+              >
+                <Text className="text-white text-center font-semibold">Remove</Text>
+              </TouchableOpacity>
+            </View>
           </View>
         </View>
       </Modal>

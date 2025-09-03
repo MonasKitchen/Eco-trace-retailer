@@ -14,7 +14,18 @@ interface DisposalDue {
     type: string;
   };
   created_at: string;
-  collected_at?: string;
+}
+
+interface RetailerTransaction {
+  id: string;
+  retailer_id: string;
+  business_id: string;
+  amount: number;
+  timestamp: string;
+  business?: {
+    name: string;
+    type: string;
+  };
 }
 
 interface CompanyPayment {
@@ -42,7 +53,7 @@ export default function DisposalCollectionScreen() {
   const [paymentModalVisible, setPaymentModalVisible] = useState(false);
   const [selectedDue, setSelectedDue] = useState<DisposalDue | null>(null);
   const [paymentAmount, setPaymentAmount] = useState('');
-  const [collectionHistory, setCollectionHistory] = useState<DisposalDue[]>([]);
+  const [collectionHistory, setCollectionHistory] = useState<RetailerTransaction[]>([]);
   const [activeTab, setActiveTab] = useState<'pending' | 'collected' | 'payments' | 'companies'>('pending');
   const [companySummaries, setCompanySummaries] = useState<CompanySummary[]>([]);
   const [companyPaymentModalVisible, setCompanyPaymentModalVisible] = useState(false);
@@ -92,19 +103,19 @@ export default function DisposalCollectionScreen() {
 
           setDisposalDues(pendingDues || []);
 
-          // Fetch collected dues
-          const { data: collectedDues } = await supabase
-            .from('disposal_dues')
+          // Fetch collection history from retailer_transactions
+          const { data: transactions } = await supabase
+            .from('retailer_transactions')
             .select(`
               *,
               business:businesses(name, type)
             `)
+            .eq('retailer_id', retailer.id)
             .in('business_id', businessIds)
-            .eq('status', 'collected')
-            .order('collected_at', { ascending: false })
-            .limit(20);
+            .order('timestamp', { ascending: false })
+            .limit(50);
 
-          setCollectionHistory(collectedDues || []);
+          setCollectionHistory(transactions || []);
         }
 
         // Fetch company payments
@@ -199,12 +210,11 @@ export default function DisposalCollectionScreen() {
         return;
       }
 
-      // Update disposal due status
+      // Update disposal due status (paid per schema)
       const { error: updateError } = await supabase
         .from('disposal_dues')
         .update({ 
-          status: 'collected',
-          collected_at: new Date().toISOString()
+          status: 'paid'
         })
         .eq('id', selectedDue.id);
 
@@ -225,8 +235,7 @@ export default function DisposalCollectionScreen() {
             retailer_id: retailerData.id,
             business_id: selectedDue.business_id,
             amount: amount,
-            timestamp: new Date().toISOString(),
-            type: 'disposal_collection'
+            timestamp: new Date().toISOString()
           });
 
         if (transactionError) throw transactionError;
@@ -362,7 +371,7 @@ export default function DisposalCollectionScreen() {
   const getStatusColor = (status: string) => {
     switch (status) {
       case 'pending': return 'text-yellow-600';
-      case 'collected': return 'text-green-600';
+      case 'paid': return 'text-green-600';
       case 'overdue': return 'text-red-600';
       default: return 'text-gray-600';
     }
@@ -371,7 +380,7 @@ export default function DisposalCollectionScreen() {
   const getStatusIcon = (status: string) => {
     switch (status) {
       case 'pending': return 'time';
-      case 'collected': return 'checkmark-circle';
+      case 'paid': return 'checkmark-circle';
       case 'overdue': return 'warning';
       default: return 'help-circle';
     }
@@ -605,13 +614,13 @@ export default function DisposalCollectionScreen() {
                 <View className="bg-white rounded-lg p-4 mb-3 border-l-4 border-green-500">
                   <View className="flex-row justify-between items-start mb-2">
                     <View className="flex-1">
-                      <Text className="text-lg font-semibold text-gray-800">{item.business.name}</Text>
-                      <Text className="text-gray-600">{item.business.type}</Text>
+                      <Text className="text-lg font-semibold text-gray-800">{item.business?.name || 'Business'}</Text>
+                      <Text className="text-gray-600">{item.business?.type || ''}</Text>
                     </View>
                     <View className="items-end">
                       <Text className="text-xl font-bold text-green-600">₹{item.amount}</Text>
                       <Text className="text-sm text-gray-600">
-                        Collected: {new Date(item.collected_at || '').toLocaleDateString()}
+                        Collected: {new Date(item.timestamp).toLocaleDateString()}
                       </Text>
                     </View>
                   </View>

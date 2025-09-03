@@ -176,7 +176,7 @@ export default function ProductManagementScreen() {
   useEffect(() => {
     fetchInventory();
     fetchPlasticMaterials();
-  }, []); // Removed fetchInventory from dependencies to prevent infinite loop
+  }, [fetchInventory, fetchPlasticMaterials]); // Removed fetchInventory from dependencies to prevent infinite loop
 
   const getItemStatus = (quantity: number): 'available' | 'out_of_stock' | 'discontinued' => {
     if (quantity === 0) return 'out_of_stock';
