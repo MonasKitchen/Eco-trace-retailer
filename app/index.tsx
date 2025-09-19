@@ -3,6 +3,8 @@ import React, { useState } from 'react';
 import { Alert, Text, TextInput, TouchableOpacity, View } from 'react-native';
 
 export default function AuthScreen() {
+  console.log('AuthScreen rendered'); // Debug log
+  
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [name, setName] = useState('');
@@ -49,9 +51,11 @@ export default function AuthScreen() {
       }
       
       // If we reach here, the user is approved and can proceed
+      // The redirect to tabs will be handled by the RootLayout component
     } catch (error) {
       console.error('Sign in error:', error);
       Alert.alert('Error', 'An unexpected error occurred');
+      setLoading(false);
     }
     setLoading(false);
   }

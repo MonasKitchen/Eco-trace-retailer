@@ -764,15 +764,6 @@ export default function ReportsScreen() {
         )}
       </ScrollView>
 
-      {/* Generate Report Button */}
-      <View style={{ padding: 16, backgroundColor: 'white', borderTopWidth: 1, borderTopColor: '#e5e7eb' }}>
-        <TouchableOpacity
-          style={{ backgroundColor: '#059669', paddingVertical: 12, paddingHorizontal: 16, borderRadius: 8 }}
-          onPress={generateReport}
-        >
-          <Text style={{ color: 'white', textAlign: 'center', fontWeight: '600' }}>Generate Detailed Report</Text>
-        </TouchableOpacity>
-      </View>
     </View>
   );
 }

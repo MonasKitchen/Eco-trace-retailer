@@ -26,6 +26,8 @@ interface Notification {
 }
 
 export default function HomeScreen() {
+  console.log('HomeScreen rendered'); // Debug log
+  
   const [collectionSummary, setCollectionSummary] = useState({
     pendingDisposalDues: 0,
     paidDisposalDues: 0,
@@ -44,9 +46,48 @@ export default function HomeScreen() {
   });
   const [notifications, setNotifications] = useState<Notification[]>([]);
 
-  const signOut = async () => {
-    const { error } = await supabase.auth.signOut();
-    if (error) Alert.alert('Error signing out', error.message);
+  const handleLogout = async () => {
+    Alert.alert(
+      'Logout',
+      'Are you sure you want to logout?',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Logout',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              console.log('Starting logout process...');
+              
+              // Clear any local state first
+              setRetailerProfile(null);
+              setCollectionSummary({
+                pendingDisposalDues: 0,
+                paidDisposalDues: 0,
+                totalInventoryItems: 0,
+                monthlyTransactions: 0,
+              });
+              
+              // Sign out from Supabase
+              const { error } = await supabase.auth.signOut();
+              
+              if (error) {
+                console.error('Error signing out:', error);
+                Alert.alert('Error', 'Failed to logout. Please try again.');
+                return;
+              }
+              
+              console.log('Successfully signed out');
+              // Don't manually navigate - let the auth guard handle it
+              
+            } catch (error) {
+              console.error('Unexpected error during logout:', error);
+              Alert.alert('Error', 'An unexpected error occurred during logout.');
+            }
+          }
+        }
+      ]
+    );
   };
 
   useEffect(() => {
@@ -329,12 +370,20 @@ export default function HomeScreen() {
               {retailerProfile?.name || 'Retailer'} • {retailerProfile?.location || 'Location not set'}
             </Text>
           </View>
-          <TouchableOpacity
-            onPress={() => setProfileModalVisible(true)}
-            className="bg-green-600 p-2 rounded-full"
-          >
-            <Ionicons name="person" size={20} color="white" />
-          </TouchableOpacity>
+          <View className="flex-row space-x-2">
+            <TouchableOpacity
+              onPress={handleLogout}
+              className="bg-red-600 p-2 rounded-full"
+            >
+              <Ionicons name="log-out" size={20} color="white" />
+            </TouchableOpacity>
+            <TouchableOpacity
+              onPress={() => setProfileModalVisible(true)}
+              className="bg-green-600 p-2 rounded-full"
+            >
+              <Ionicons name="person" size={20} color="white" />
+            </TouchableOpacity>
+          </View>
         </View>
 
         {/* Status Badge */}
@@ -547,19 +596,31 @@ export default function HomeScreen() {
               </View>
             </View>
 
-            <View className="flex-row space-x-3 mt-6">
-              <TouchableOpacity
-                className="flex-1 bg-gray-500 py-3 px-4 rounded-lg"
-                onPress={() => setProfileModalVisible(false)}
-              >
-                <Text className="text-white text-center font-semibold">Cancel</Text>
-              </TouchableOpacity>
+            <View className="space-y-3 mt-6">
+              <View className="flex-row space-x-3">
+                <TouchableOpacity
+                  className="flex-1 bg-gray-500 py-3 px-4 rounded-lg"
+                  onPress={() => setProfileModalVisible(false)}
+                >
+                  <Text className="text-white text-center font-semibold">Cancel</Text>
+                </TouchableOpacity>
+                
+                <TouchableOpacity
+                  className="flex-1 bg-green-600 py-3 px-4 rounded-lg"
+                  onPress={updateProfile}
+                >
+                  <Text className="text-white text-center font-semibold">Update</Text>
+                </TouchableOpacity>
+              </View>
               
               <TouchableOpacity
-                className="flex-1 bg-green-600 py-3 px-4 rounded-lg"
-                onPress={updateProfile}
+                className="bg-red-600 py-3 px-4 rounded-lg"
+                onPress={() => {
+                  setProfileModalVisible(false);
+                  handleLogout();
+                }}
               >
-                <Text className="text-white text-center font-semibold">Update</Text>
+                <Text className="text-white text-center font-semibold">Sign Out</Text>
               </TouchableOpacity>
             </View>
           </View>
