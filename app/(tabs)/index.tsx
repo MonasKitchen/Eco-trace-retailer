@@ -1,5 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
-import { Href, router } from 'expo-router';
+import { router } from 'expo-router';
 import React, { useEffect, useState } from 'react';
 import { Alert, Modal, ScrollView, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { supabase } from '../../lib/supabase';
@@ -431,7 +431,7 @@ export default function HomeScreen() {
                   }`}
                   onPress={() => {
                     if (notification.type === 'disposal_due') {
-                      router.push('/(tabs)/payments' as Href);
+                      router.push('/(tabs)/disposal-dues');
                     } else if (notification.type === 'low_inventory') {
                       router.push('/(tabs)/products');
                     }
@@ -529,7 +529,7 @@ export default function HomeScreen() {
               </TouchableOpacity>
               
               <TouchableOpacity 
-                onPress={() => router.push('/(tabs)/payments' as Href)}
+                onPress={() => router.push('/(tabs)/disposal-dues')}
                 className="bg-blue-600 rounded-lg p-4 flex-1 min-w-[140px]"
               >
                 <Ionicons name="card" size={24} color="white" />

@@ -9,7 +9,7 @@ interface Business {
   owner_id: string;
   name: string;
   type: string;
-  verification_status: 'pending' | 'verified' | 'rejected';
+  verification_status: 'pending' | 'approved' | 'rejected';
   created_at: string;
   updated_at: string;
   approved_at?: string;
@@ -277,11 +277,11 @@ export default function BusinessListScreen() {
         </View>
         
         <View className="flex-row items-center">
-          <Ionicons 
-            name={getStatusIcon(item.verification_status)} 
-            size={20} 
-            color={item.verification_status === 'verified' ? '#16a34a' : 
-                   item.verification_status === 'pending' ? '#f59e0b' : '#ef4444'} 
+          <Ionicons
+            name={getStatusIcon(item.verification_status)}
+            size={20}
+            color={item.verification_status === 'approved' ? '#16a34a' :
+                   item.verification_status === 'pending' ? '#f59e0b' : '#ef4444'}
           />
           <Text className={`ml-1 text-sm font-medium ${getStatusColor(item.verification_status)}`}>
             {item.verification_status.charAt(0).toUpperCase() + item.verification_status.slice(1)}
@@ -397,11 +397,11 @@ export default function BusinessListScreen() {
                 <View>
                   <Text className="text-sm text-gray-500">Status</Text>
                   <View className="flex-row items-center mt-1">
-                    <Ionicons 
-                      name={getStatusIcon(selectedBusiness.verification_status)} 
-                      size={16} 
-                      color={selectedBusiness.verification_status === 'verified' ? '#16a34a' : 
-                             selectedBusiness.verification_status === 'pending' ? '#f59e0b' : '#ef4444'} 
+                    <Ionicons
+                      name={getStatusIcon(selectedBusiness.verification_status)}
+                      size={16}
+                      color={selectedBusiness.verification_status === 'approved' ? '#16a34a' :
+                             selectedBusiness.verification_status === 'pending' ? '#f59e0b' : '#ef4444'}
                     />
                     <Text className={`ml-2 font-medium ${getStatusColor(selectedBusiness.verification_status)}`}>
                       {selectedBusiness.verification_status.charAt(0).toUpperCase() + selectedBusiness.verification_status.slice(1)}

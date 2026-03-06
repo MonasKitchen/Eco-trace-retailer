@@ -143,36 +143,40 @@ export default function AuthScreen() {
       <View className="space-y-4">
         {isSignUp && (
           <TextInput
-            className="border border-gray-300 rounded-lg px-4 py-3 text-base"
+            className="border text-black border-gray-300 rounded-lg px-4 py-3"
             placeholder="Retailer Name"
+            placeholderTextColor="#9ca3af"
             value={name}
             onChangeText={setName}
             autoCapitalize="words"
           />
         )}
-        
+
         <TextInput
-          className="border border-gray-300 rounded-lg px-4 py-3 text-base"
+          className="border text-black border-gray-300 rounded-lg px-4 py-3"
           placeholder="Email"
+          placeholderTextColor="#9ca3af"
           value={email}
           onChangeText={setEmail}
           autoCapitalize="none"
           keyboardType="email-address"
         />
-        
+
         {isSignUp && (
           <TextInput
-            className="border border-gray-300 rounded-lg px-4 py-3 text-base"
+            className="border text-black border-gray-300 rounded-lg px-4 py-3"
             placeholder="Location/City"
+            placeholderTextColor="#9ca3af"
             value={location}
             onChangeText={setLocation}
             autoCapitalize="words"
           />
         )}
-        
+
         <TextInput
-          className="border border-gray-300 rounded-lg px-4 py-3 text-base"
+          className="border text-black border-gray-300 rounded-lg px-4 py-3"
           placeholder="Password"
+          placeholderTextColor="#9ca3af"
           value={password}
           onChangeText={setPassword}
           secureTextEntry
@@ -183,7 +187,7 @@ export default function AuthScreen() {
           onPress={isSignUp ? signUpWithEmail : signInWithEmail}
           disabled={loading}
         >
-          <Text className="text-white text-center font-semibold text-base">
+          <Text className="text-white text-center font-semibold ">
             {loading ? 'Loading...' : isSignUp ? 'Sign Up' : 'Sign In'}
           </Text>
         </TouchableOpacity>

@@ -1,5 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
-import { Href, router, useLocalSearchParams } from 'expo-router';
+import { router, useLocalSearchParams } from 'expo-router';
 import React, { useCallback, useEffect, useState } from 'react';
 import { ActivityIndicator, Alert, FlatList, Modal, RefreshControl, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { supabase } from '../../lib/supabase';
@@ -45,7 +45,7 @@ export default function CompanyProductsScreen() {
   });
   const [purchasing, setPurchasing] = useState(false);
 
-  const fetchCompanyDetails = async () => {
+  const fetchCompanyDetails = useCallback(async () => {
     try {
       const { data, error } = await supabase
         .from('companies')
@@ -59,7 +59,7 @@ export default function CompanyProductsScreen() {
       console.error('Error fetching company details:', error);
       Alert.alert('Error', 'Failed to fetch company details');
     }
-  };
+  }, [companyId]);
 
   const fetchCompanyProducts = useCallback(async () => {
     try {
@@ -346,10 +346,10 @@ export default function CompanyProductsScreen() {
         `Check your inventory to see the updated stock.`,
         [
           { 
-            text: 'View Inventory', 
+            text: 'View Inventory',
             onPress: () => {
               setBuyModalVisible(false);
-              router.push('/retailer/products' as Href);
+              router.push('/(tabs)/products');
             }
           },
           { 

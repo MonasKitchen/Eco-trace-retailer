@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { Alert, FlatList, Modal, Text, TextInput, TouchableOpacity, View, Image } from 'react-native';
+import { Alert, FlatList, Modal, ScrollView, Text, TextInput, TouchableOpacity, View, Image } from 'react-native';
 import { supabase } from '../../lib/supabase';
 
 interface CompanyProduct {
@@ -186,7 +186,7 @@ const regenerateQRCode = async (inventoryItem: RetailerInventory) => {
           .from('retailer_inventory')
           .select(`
             *,
-            company_product:company_products(*)
+            company_product:company_products!company_product_id(*)
           `)
           .eq('retailer_id', retailerData.id)
           .eq('is_custom_product', true) // Only show custom products in main inventory
@@ -231,7 +231,7 @@ const regenerateQRCode = async (inventoryItem: RetailerInventory) => {
         quantity,
         company_product_id,
         is_custom_product,
-        company_products (
+        company_products!company_product_id (
           id,
           name,
           category,
@@ -282,7 +282,7 @@ const regenerateQRCode = async (inventoryItem: RetailerInventory) => {
       // Check if there are ANY inventory items for this retailer
       const { data: allInventory, error: debugError } = await supabase
         .from('retailer_inventory')
-        .select('*, company_products(*)')
+        .select('*, company_products!company_product_id(*)')
         .eq('retailer_id', retailerData.id);
         
       if (!debugError) {
@@ -756,9 +756,10 @@ const renderInventoryItem = ({ item }: { item: RetailerInventory }) => (
         onRequestClose={() => setModalVisible(false)}
       >
         <View className="flex-1 justify-center items-center bg-black bg-opacity-50">
-          <View className="bg-white p-6 rounded-lg w-11/12 max-h-5/6">
+          <View className="bg-white rounded-lg w-11/12" style={{ maxHeight: '90%' }}>
+            <ScrollView contentContainerStyle={{ padding: 24 }} showsVerticalScrollIndicator={true} keyboardShouldPersistTaps="handled">
             <Text className="text-xl font-bold text-gray-800 mb-4">Create Custom Product</Text>
-            
+
             <View className="mb-4">
               <Text className="text-gray-700 font-medium mb-2">Product Name *</Text>
               <TextInput
@@ -904,6 +905,7 @@ const renderInventoryItem = ({ item }: { item: RetailerInventory }) => (
                 </Text>
               </TouchableOpacity>
             </View>
+            </ScrollView>
           </View>
         </View>
       </Modal>

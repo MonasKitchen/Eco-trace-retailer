@@ -40,12 +40,8 @@ export default function RootLayout() {
       router.replace("/(tabs)");
     } else if (!session && inAuthGroup) {
       // User is logged out but still in tabs, redirect to auth screen
-      console.log('Redirecting to auth screen with reset'); // Debug log
-      // Use a more aggressive navigation reset
-      router.dismissAll();
-      setTimeout(() => {
-        router.replace("/");
-      }, 100);
+      console.log('Redirecting to auth screen'); // Debug log
+      router.replace("/");
     }
   }, [session, segments, loading, router]);
 

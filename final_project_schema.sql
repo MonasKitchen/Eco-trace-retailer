@@ -1,3 +1,5 @@
+CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+
 -- Users Table
 CREATE TABLE users (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
@@ -25,7 +27,7 @@ CREATE TABLE businesses (
 -- Companies Table
 CREATE TABLE companies (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-  user_id UUID REFERENCES users(id),
+  user_id UUID NOT NULL UNIQUE REFERENCES users(id),
   name TEXT NOT NULL,
   contact_person TEXT NOT NULL,
   email TEXT NOT NULL,
@@ -33,7 +35,7 @@ CREATE TABLE companies (
   address TEXT,
   registration_date TIMESTAMPTZ DEFAULT NOW(),
   verification_status TEXT DEFAULT 'pending' CHECK (verification_status IN ('pending', 'approved', 'rejected')),
-  disposal_rates JSONB DEFAULT '{}',
+  disposal_rates JSONB DEFAULT '[]'::jsonb,
   total_disposal_collected NUMERIC DEFAULT 0,
   disposal_processing_capacity NUMERIC DEFAULT 0,
   disposal_license_number TEXT,
@@ -500,7 +502,7 @@ FROM retailer_disposal_dues rdd
 LEFT JOIN company_disposal_dues cmpdd ON cmpdd.retailer_disposal_due_id = rdd.id
 WHERE rdd.business_disposal_due_id IS NULL AND rdd.source_type = 'company_purchase'
 
-ORDER BY COALESCE(consumer_due_id, retailer_due_id);
+ORDER BY consumer_due_id NULLS LAST, retailer_due_id;
 
 -- Indexes for better performance
 CREATE INDEX IF NOT EXISTS idx_consumer_disposal_dues_status ON consumer_disposal_dues(status);
